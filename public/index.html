@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>双人打卡 · 实时同步版</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    :root { --bg: #fef8fb; --card: #fff; --text: #333; --border: #f0e4ec; --primary: #ff97b7; --primary-light: #ffe8f0; --success: #52c41a; }
+    .dark { --bg: #1c1c2e; --card: #2a2a40; --text: #eee; --border: #383850; --primary: #7367f0; --primary-light: #373070; }
+    .t1 { --bg: #f8fbff; --primary: #69b1ff; --primary-light: #e8f3ff; }
+    .t2 { --bg: #fbfef8; --primary: #73d13d; --primary-light: #efffde; }
+    .t3 { --bg: #fffaf8; --primary: #ff7a5c; --primary-light: #ffebe5; }
+    body { background: var(--bg); color: var(--text); padding: 12px; transition: background 0.2s, color 0.2s; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif; }
+    button { border: none; border-radius: 12px; padding: 8px 14px; background: var(--primary); color: white; cursor: pointer; font-size: 14px; font-weight: 500; margin: 2px; transition: 0.1s ease; touch-action: manipulation; }
+    button:active { transform: scale(0.96); }
+    .input-box { padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 14px; width: 150px; }
+    .card { background: var(--card); border-radius: 24px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: background 0.2s; }
+    .calendar { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; }
+    .cal-day { aspect-ratio: 1/1; background: var(--primary-light); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; }
+    .cal-day.today { border: 2px solid var(--primary); }
+    .cal-ico { font-size: 12px; margin-top: 3px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .avatar { font-size: 48px; cursor: pointer; margin: 6px 0; }
+    .nickname { font-size: 18px; font-weight: bold; cursor: pointer; background: var(--primary-light); display: inline-block; padding: 4px 14px; border-radius: 40px; margin: 6px 0; }
+    .sign-flag { cursor: pointer; font-size: 15px; margin: 6px 0; }
+    .coin { color: var(--success); font-weight: bold; font-size: 15px; }
+    .task-item { display: flex; align-items: center; justify-content: space-between; background: var(--primary-light); border-radius: 16px; padding: 10px 12px; margin: 8px 0; }
+    .task-item.done { opacity: 0.6; text-decoration: line-through; }
+    .hide { display: none; }
+    .mask { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 1000; }
+    .pop { background: var(--card); border-radius: 28px; padding: 24px; width: 90%; max-width: 380px; max-height: 70vh; overflow: auto; }
+    .ico-list { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+    .ico-item { font-size: 36px; padding: 8px; border-radius: 20px; background: var(--primary-light); cursor: pointer; text-align: center; min-width: 60px; }
+    .chart-box { height: 210px; margin-top: 8px; }
+    .flex-between { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+    .sync-status { background: #eef2ff; padding: 4px 12px; border-radius: 40px; font-size: 12px; color: #1e40af; }
+    .warning { background: #ffe4e2; color: #b91c1c; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="flex-between">
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+      <input class="input-box" id="roomId" placeholder="房间号" value="demo888">
+      <button id="joinRoomBtn">📡 加入房间</button>
+      <span id="syncStatus" class="sync-status">⚪ 未连接</span>
+    </div>
+    <div>
+      <button id="darkBtn">🌓 深浅</button>
+      <button id="themeBtn">🎨 主题</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div id="monthTit" style="text-align:center; margin-bottom:12px; font-weight:bold;"></div>
+  <div class="calendar" id="calendarBox"></div>
+</div>
+
+<div class="row2">
+  <div class="card" style="text-align:center;">
+    <div class="avatar" id="avt1">🐱</div>
+    <div class="nickname" id="name1">小茗</div>
+    <div class="sign-flag" id="sign1">⭐ 打卡标志</div>
+    <div class="coin">💰 金币：<span id="c1">0</span></div>
+  </div>
+  <div class="card" style="text-align:center;">
+    <div class="avatar" id="avt2">🐰</div>
+    <div class="nickname" id="name2">阿悠</div>
+    <div class="sign-flag" id="sign2">🌺 打卡标志</div>
+    <div class="coin">💰 金币：<span id="c2">0</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="flex-between"><h4 id="taskTitle1">小茗 每日任务</h4><button id="addD1">+ 添加</button></div>
+  <div id="listD1"></div>
+</div>
+<div class="card">
+  <div class="flex-between"><h4 id="taskTitle2">阿悠 每日任务</h4><button id="addD2">+ 添加</button></div>
+  <div id="listD2"></div>
+</div>
+
+<div class="card">
+  <div class="flex-between"><h4>📅 每周任务</h4><span id="foldWeek" style="color:var(--primary); cursor:pointer;">收起</span></div>
+  <div id="weekWrap">
+    <div style="margin:10px 0;"><div class="flex-between"><span id="weekName1">小茗</span><button id="addW1">+ 周任务</button></div><div id="listW1"></div></div>
+    <div><div class="flex-between"><span id="weekName2">阿悠</span><button id="addW2">+ 周任务</button></div><div id="listW2"></div></div>
+  </div>
+</div>
+
+<div class="card"><h4>📊 近15天打卡</h4><div class="chart-box"><canvas id="chart15"></canvas></div></div>
+<div class="card"><h4>📆 本周打卡</h4><div class="chart-box"><canvas id="chartWeek"></canvas></div></div>
+
+<div class="mask" id="mask"><div class="pop" id="popBody"></div></div>
+
+<script>
+  let syncData = { u1: { name: "小茗", avt: "🐱", sign: "⭐", coin: 0, daily: [], weekly: [], check: {} }, u2: { name: "阿悠", avt: "🐰", sign: "🌺", coin: 0, daily: [], weekly: [], check: {} } };
+  let currentRoom = "";
+  let ws = null;
+  let reconnectTimer = null;
+  let foldWeek = false;
+  let chart15, chartWeek;
+  let localSetting = JSON.parse(localStorage.getItem("clockLocalSetting")) || { dark: false, theme: "" };
+  const AVT = ['🐱','🐰','🐼','🐨','🦊','🐻','🐹','🦄','🌸','🌷','🌹','🍀','🌙','⭐','✨','🎀','🐧','🦋','🐙','🐳'];
+  const SIGN = ['⭐','🌺','🌙','🍀','✨','💫','🌷','🎀','💖','🌸','🌈','🌟','🌿','🔥','❤️','💎'];
+  const THEMES = ["", "t1", "t2", "t3"];
+
+  function getDayStr(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+  function calcCheckIn() { const t = getDayStr(new Date()); syncData.u1.check[t] = syncData.u1.daily.some(t=>t.done); syncData.u2.check[t] = syncData.u2.daily.some(t=>t.done); }
+  function renderAll() { renderUserInfo(); renderCalendar(); renderTaskLists(); renderCoin(); updateCharts(); calcCheckIn(); }
+  function renderUserInfo() {
+    document.getElementById("name1").innerText = syncData.u1.name; document.getElementById("name2").innerText = syncData.u2.name;
+    document.getElementById("taskTitle1").innerHTML = syncData.u1.name + " 📋 每日任务"; document.getElementById("taskTitle2").innerHTML = syncData.u2.name + " 📋 每日任务";
+    document.getElementById("weekName1").innerText = syncData.u1.name; document.getElementById("weekName2").innerText = syncData.u2.name;
+    document.getElementById("avt1").innerText = syncData.u1.avt; document.getElementById("avt2").innerText = syncData.u2.avt;
+    document.getElementById("sign1").innerHTML = syncData.u1.sign + " 打卡标志"; document.getElementById("sign2").innerHTML = syncData.u2.sign + " 打卡标志";
+  }
+  function renderCoin() { document.getElementById("c1").innerText = syncData.u1.coin; document.getElementById("c2").innerText = syncData.u2.coin; }
+  function renderCalendar() {
+    const now = new Date(), y = now.getFullYear(), m = now.getMonth();
+    document.getElementById("monthTit").innerHTML = `${y}年${m+1}月`;
+    const first = new Date(y,m,1).getDay(), days = new Date(y,m+1,0).getDate(), todayStr = getDayStr(now);
+    let html = "";
+    for(let i=0;i<first;i++) html += `<div class="cal-day"></div>`;
+    for(let d=1;d<=days;d++) {
+      const s = `${y}-${String(m+1).padStart(2,0)}-${String(d).padStart(2,0)}`;
+      const ico1 = syncData.u1.check[s] ? syncData.u1.sign : "", ico2 = syncData.u2.check[s] ? syncData.u2.sign : "";
+      const cls = s===todayStr ? "cal-day today" : "cal-day";
+      html += `<div class="${cls}">${d}<div class="cal-ico">${ico1}${ico2}</div></div>`;
+    }
+    document.getElementById("calendarBox").innerHTML = html;
+  }
+  function renderTaskLists() {
+    let d1="",d2="",w1="",w2="";
+    syncData.u1.daily.forEach((it,i)=>{ d1 += `<div class="task-item ${it.done?'done':''}"><label><input type="checkbox" ${it.done?"checked":""} data-uid="1" data-type="daily" data-idx="${i}" class="task-check"> ${escapeHtml(it.name)}</label><button class="del-task" data-uid="1" data-type="daily" data-idx="${i}">删除</button></div>`; });
+    syncData.u2.daily.forEach((it,i)=>{ d2 += `<div class="task-item ${it.done?'done':''}"><label><input type="checkbox" ${it.done?"checked":""} data-uid="2" data-type="daily" data-idx="${i}" class="task-check"> ${escapeHtml(it.name)}</label><button class="del-task" data-uid="2" data-type="daily" data-idx="${i}">删除</button></div>`; });
+    syncData.u1.weekly.forEach((it,i)=>{ w1 += `<div class="task-item ${it.done?'done':''}"><label><input type="checkbox" ${it.done?"checked":""} data-uid="1" data-type="weekly" data-idx="${i}" class="task-check"> ${escapeHtml(it.name)}</label><button class="del-task" data-uid="1" data-type="weekly" data-idx="${i}">删除</button></div>`; });
+    syncData.u2.weekly.forEach((it,i)=>{ w2 += `<div class="task-item ${it.done?'done':''}"><label><input type="checkbox" ${it.done?"checked":""} data-uid="2" data-type="weekly" data-idx="${i}" class="task-check"> ${escapeHtml(it.name)}</label><button class="del-task" data-uid="2" data-type="weekly" data-idx="${i}">删除</button></div>`; });
+    document.getElementById("listD1").innerHTML = d1; document.getElementById("listD2").innerHTML = d2;
+    document.getElementById("listW1").innerHTML = w1; document.getElementById("listW2").innerHTML = w2;
+    document.querySelectorAll('.task-check').forEach(cb=>{ cb.removeEventListener('change', handleTaskCheck); cb.addEventListener('change', handleTaskCheck); });
+    document.querySelectorAll('.del-task').forEach(btn=>{ btn.removeEventListener('click', handleTaskDelete); btn.addEventListener('click', handleTaskDelete); });
+  }
+  function escapeHtml(str) { return String(str).replace(/[&<>]/g, function(m){ if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+  function handleTaskCheck(e) {
+    const cb=e.target, uid=parseInt(cb.dataset.uid), type=cb.dataset.type, idx=parseInt(cb.dataset.idx);
+    const u = uid===1?syncData.u1:syncData.u2, arr = type==="daily"?u.daily:u.weekly;
+    if(!arr[idx]) return;
+    const oldDone = arr[idx].done;
+    arr[idx].done = cb.checked;
+    const add = type==="daily"?1:3;
+    if(arr[idx].done && !oldDone) u.coin += add;
+    else if(!arr[idx].done && oldDone) u.coin -= add;
+    calcCheckIn(); pushToBackend(); renderAll();
+  }
+  function handleTaskDelete(e) {
+    const btn=e.currentTarget, uid=parseInt(btn.dataset.uid), type=btn.dataset.type, idx=parseInt(btn.dataset.idx);
+    const u = uid===1?syncData.u1:syncData.u2, arr = type==="daily"?u.daily:u.weekly;
+    arr.splice(idx,1); calcCheckIn(); pushToBackend(); renderAll();
+  }
+  function addTaskGeneric(type,uid) {
+    const name = prompt("📝 输入任务名称");
+    if(!name || name.trim()==="") return;
+    const u = uid===1?syncData.u1:syncData.u2;
+    u[type].push({ name: name.trim(), done: false });
+    pushToBackend(); renderAll();
+  }
+  function initCharts() {
+    if(chart15) chart15.destroy(); if(chartWeek) chartWeek.destroy();
+    const ctx15 = document.getElementById("chart15")?.getContext("2d"), ctxWeek = document.getElementById("chartWeek")?.getContext("2d");
+    if(ctx15 && ctxWeek) {
+      chart15 = new Chart(ctx15, { type:"bar", data:{ labels:[], datasets:[{ label:syncData.u1.name, data:[], backgroundColor:"#ff97b7" }, { label:syncData.u2.name, data:[], backgroundColor:"#69b1ff" }] }, options:{ responsive:true, maintainAspectRatio:false } });
+      chartWeek = new Chart(ctxWeek, { type:"bar", data:{ labels:["一","二","三","四","五","六","日"], datasets:[{ label:syncData.u1.name, data:[], backgroundColor:"#ff97b7" }, { label:syncData.u2.name, data:[], backgroundColor:"#69b1ff" }] }, options:{ responsive:true, maintainAspectRatio:false } });
+    }
+  }
+  function updateCharts() {
+    if(!chart15||!chartWeek) { initCharts(); if(!chart15||!chartWeek) return; }
+    try {
+      const lab15=[], d15_1=[], d15_2=[];
+      for(let i=14;i>=0;i--) { const dt=new Date(); dt.setDate(dt.getDate()-i); const s=getDayStr(dt); lab15.push(`${dt.getMonth()+1}/${dt.getDate()}`); d15_1.push(syncData.u1.check[s]?1:0); d15_2.push(syncData.u2.check[s]?1:0); }
+      chart15.data.labels=lab15; chart15.data.datasets[0].data=d15_1; chart15.data.datasets[1].data=d15_2; chart15.data.datasets[0].label=syncData.u1.name; chart15.data.datasets[1].label=syncData.u2.name; chart15.update();
+      const w1=[0,0,0,0,0,0,0], w2=[0,0,0,0,0,0,0], now=new Date(), todayIdx=now.getDay()||7;
+      for(let i=0;i<7;i++) { const dt=new Date(); dt.setDate(dt.getDate()-(todayIdx-1-i)); const s=getDayStr(dt); if(syncData.u1.check[s]) w1[i]=1; if(syncData.u2.check[s]) w2[i]=1; }
+      chartWeek.data.datasets[0].data=w1; chartWeek.data.datasets[1].data=w2; chartWeek.data.datasets[0].label=syncData.u1.name; chartWeek.data.datasets[1].label=syncData.u2.name; chartWeek.update();
+    } catch(e) { console.warn(e); }
+  }
+  function getWebSocketUrl() { let protocol = window.location.protocol === "https:" ? "wss:" : "ws:"; return `${protocol}//${window.location.host}`; }
+  function connectWebSocket(roomId) {
+    if(ws) ws.close();
+    const wsUrl = getWebSocketUrl();
+    ws = new WebSocket(wsUrl);
+    const statusSpan = document.getElementById("syncStatus");
+    ws.onopen = () => { console.log("✅ WebSocket 已连接"); statusSpan.innerHTML="🟢 已连接 "+roomId; statusSpan.classList.remove("warning"); ws.send(JSON.stringify({ type:'join', roomId })); };
+    ws.onmessage = (event) => { try { const {type,data}=JSON.parse(event.data); if(type==='sync') { syncData=data; renderAll(); statusSpan.innerHTML="🔄 同步更新 "+new Date().toLocaleTimeString(); setTimeout(()=>{ if(statusSpan.innerHTML.includes("同步")) statusSpan.innerHTML="🟢 已连接 "+currentRoom; },1500); } } catch(e){ console.error(e); } };
+    ws.onerror = (err) => { console.error("WebSocket 错误",err); statusSpan.innerHTML="⚠️ 连接错误"; statusSpan.classList.add("warning"); };
+    ws.onclose = () => { console.log("WebSocket 断开，尝试重连..."); statusSpan.innerHTML="🔁 重连中..."; if(reconnectTimer) clearTimeout(reconnectTimer); reconnectTimer = setTimeout(()=>{ if(currentRoom) connectWebSocket(currentRoom); },3000); };
+  }
+  function pushToBackend() { if(ws && ws.readyState===WebSocket.OPEN && currentRoom) { ws.send(JSON.stringify({ type:'update', roomId:currentRoom, payload:syncData })); } else { console.warn("WebSocket 未就绪，更改已保存本地但未同步"); } }
+  function joinRoom() { const room = document.getElementById("roomId").value.trim(); if(!room) { alert("请输入房间号"); return; } currentRoom = room; connectWebSocket(currentRoom); }
+  function applyTheme() { document.body.className = localSetting.theme; if(localSetting.dark) document.body.classList.add("dark"); }
+  function saveLocalSetting() { localStorage.setItem("clockLocalSetting", JSON.stringify(localSetting)); }
+  function showIcoPop(type,uid) {
+    const list = type==="avt"?AVT:SIGN, title = type==="avt"?"选择头像":"选择打卡标志";
+    let html = `<h4 style="margin-bottom:12px;">${title}</h4><div class="ico-list">`;
+    list.forEach(ico=>html+=`<div class="ico-item" data-ico="${ico}">${ico}</div>`);
+    html+=`</div><button onclick="closeMask()">关闭</button>`;
+    document.getElementById("popBody").innerHTML=html; document.getElementById("mask").style.display="flex";
+    document.querySelectorAll('.ico-item').forEach(el=>{ el.onclick=()=>{ const ico=el.dataset.ico; const u=uid===1?syncData.u1:syncData.u2; if(type==="avt") u.avt=ico; else u.sign=ico; closeMask(); pushToBackend(); renderAll(); }; });
+  }
+  function showThemePop() {
+    let html = `<h4>🎨 配色主题</h4><div class="ico-list">`;
+    THEMES.forEach(t=>html+=`<div class="ico-item" data-theme="${t}">${t?`主题${t.toUpperCase()}`:'默认'}</div>`);
+    html+=`</div><button onclick="closeMask()">关闭</button>`;
+    document.getElementById("popBody").innerHTML=html; document.getElementById("mask").style.display="flex";
+    document.querySelectorAll('[data-theme]').forEach(el=>{ el.onclick=()=>{ localSetting.theme=el.dataset.theme; applyTheme(); saveLocalSetting(); closeMask(); }; });
+  }
+  function closeMask() { document.getElementById("mask").style.display="none"; }
+  function editName(uid) { const u = uid===1?syncData.u1:syncData.u2; const newName = prompt("修改昵称", u.name); if(newName && newName.trim()) u.name = newName.trim(); pushToBackend(); renderAll(); }
+  function bindEvents() {
+    document.getElementById("joinRoomBtn").onclick=joinRoom;
+    document.getElementById("darkBtn").onclick=()=>{ localSetting.dark=!localSetting.dark; applyTheme(); saveLocalSetting(); };
+    document.getElementById("themeBtn").onclick=showThemePop;
+    document.getElementById("avt1").onclick=()=>showIcoPop("avt",1); document.getElementById("avt2").onclick=()=>showIcoPop("avt",2);
+    document.getElementById("sign1").onclick=()=>showIcoPop("sign",1); document.getElementById("sign2").onclick=()=>showIcoPop("sign",2);
+    document.getElementById("name1").onclick=()=>editName(1); document.getElementById("name2").onclick=()=>editName(2);
+    document.getElementById("addD1").onclick=()=>addTaskGeneric("daily",1); document.getElementById("addD2").onclick=()=>addTaskGeneric("daily",2);
+    document.getElementById("addW1").onclick=()=>addTaskGeneric("weekly",1); document.getElementById("addW2").onclick=()=>addTaskGeneric("weekly",2);
+    const foldBtn=document.getElementById("foldWeek"); foldBtn.onclick=()=>{ foldWeek=!foldWeek; document.getElementById("weekWrap").classList.toggle("hide",foldWeek); foldBtn.innerText=foldWeek?"展开":"收起"; };
+  }
+  function initDefaultTasks() {
+    if(syncData.u1.daily.length===0) syncData.u1.daily=[{ name:"早晨喝水", done:false },{ name:"学习30分钟", done:false }];
+    if(syncData.u2.daily.length===0) syncData.u2.daily=[{ name:"散步20分钟", done:false },{ name:"整理笔记", done:false }];
+    if(syncData.u1.weekly.length===0) syncData.u1.weekly=[{ name:"周末复盘", done:false }];
+    if(syncData.u2.weekly.length===0) syncData.u2.weekly=[{ name:"帮助他人", done:false }];
+  }
+  (function() { initDefaultTasks(); applyTheme(); bindEvents(); initCharts(); renderAll(); setTimeout(()=>{ const defRoom = document.getElementById("roomId").value.trim(); if(defRoom) joinRoom(); },200); })();
+</script>
+</body>
+</html>
