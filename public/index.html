@@ -9,11 +9,12 @@
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     :root { --bg: #fef8fb; --card: #fff; --text: #333; --border: #f0e4ec; --primary: #ff97b7; --primary-light: #ffe8f0; --success: #52c41a; }
     .dark { --bg: #1c1c2e; --card: #2a2a40; --text: #eee; --border: #383850; --primary: #7367f0; --primary-light: #373070; }
-    .t1 { --bg: #f8fbff; --primary: #69b1ff; --primary-light: #e8f3ff; }
-    .t2 { --bg: #fbfef8; --primary: #73d13d; --primary-light: #efffde; }
-    .t3 { --bg: #fffaf8; --primary: #ff7a5c; --primary-light: #ffebe5; }
+    /* 修复三个主题的文字颜色，确保深色背景上字够亮 */
+    .t1 { --bg: #f8fbff; --primary: #69b1ff; --primary-light: #e8f3ff; --text: #1f2a44; }
+    .t2 { --bg: #fbfef8; --primary: #73d13d; --primary-light: #efffde; --text: #2c3e2f; }
+    .t3 { --bg: #fffaf8; --primary: #ff7a5c; --primary-light: #ffebe5; --text: #4a2c2a; }
     body { background: var(--bg); color: var(--text); padding: 12px; transition: background 0.2s, color 0.2s; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif; }
-    button { border: none; border-radius: 12px; padding: 8px 14px; background: var(--primary); color: white; cursor: pointer; font-size: 14px; font-weight: 500; margin: 2px; transition: 0.1s ease; touch-action: manipulation; }
+    button { border: none; border-radius: 12px; padding: 8px 14px; background: var(--primary); color: white; cursor: pointer; font-size: 12px; font-weight: 500; margin: 2px; transition: 0.1s ease; touch-action: manipulation; }
     button:active { transform: scale(0.96); }
     .input-box { padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 14px; width: 150px; }
     .card { background: var(--card); border-radius: 24px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: background 0.2s; }
@@ -22,7 +23,8 @@
     .cal-day.today { border: 2px solid var(--primary); }
     .cal-ico { font-size: 12px; margin-top: 3px; }
     .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .avatar { font-size: 48px; cursor: pointer; margin: 6px 0; }
+    .avatar { font-size: 48px; cursor: pointer; margin: 6px 0; display: flex; justify-content: center; align-items: center; }
+    .avatar img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
     .nickname { font-size: 18px; font-weight: bold; cursor: pointer; background: var(--primary-light); display: inline-block; padding: 4px 14px; border-radius: 40px; margin: 6px 0; }
     .sign-flag { cursor: pointer; font-size: 15px; margin: 6px 0; }
     .coin { color: var(--success); font-weight: bold; font-size: 15px; }
@@ -35,11 +37,11 @@
     .ico-item { font-size: 36px; padding: 8px; border-radius: 20px; background: var(--primary-light); cursor: pointer; text-align: center; min-width: 60px; }
     .chart-box { height: 210px; margin-top: 8px; }
     .flex-between { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-    /* 隐藏同步状态条 */
     .sync-status { display: none; }
-    /* 可选：小提示窗 */
     .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 8px 16px; border-radius: 40px; font-size: 14px; z-index: 2000; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
     .toast.show { opacity: 1; }
+    .history-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; }
+    .history-day { text-align: center; padding: 4px; background: var(--primary-light); border-radius: 8px; font-size: 12px; }
   </style>
 </head>
 <body>
@@ -49,10 +51,12 @@
     <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
       <input class="input-box" id="roomId" placeholder="房间号" value="">
       <button id="joinRoomBtn">📡 加入房间</button>
+      <button id="leaveRoomBtn" style="background:#dc3545;">🚪 退出房间</button>
     </div>
     <div>
       <button id="darkBtn">🌓 深浅</button>
       <button id="themeBtn">🎨 主题</button>
+      <button id="historyBtn">📅 历史记录</button>
     </div>
   </div>
 </div>
@@ -108,6 +112,7 @@
   let foldWeek = false;
   let chart15, chartWeek;
   let localSetting = JSON.parse(localStorage.getItem("clockLocalSetting")) || { dark: false, theme: "" };
+  // 扩充头像和标志列表（可随意添加更多）
   const AVT = ['🐱','🐰','🐼','🐨','🦊','🐻','🐹','🦄','🌸','🌷','🌹','🍀','🌙','⭐','✨','🎀','🐧','🦋','🐙','🐳'];
   const SIGN = ['⭐','🌺','🌙','🍀','✨','💫','🌷','🎀','💖','🌸','🌈','🌟','🌿','🔥','❤️','💎'];
   const THEMES = ["", "t1", "t2", "t3"];
@@ -122,13 +127,28 @@
   function getDayStr(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   function calcCheckIn() { const t = getDayStr(new Date()); syncData.u1.check[t] = syncData.u1.daily.some(t=>t.done); syncData.u2.check[t] = syncData.u2.daily.some(t=>t.done); }
   function renderAll() { renderUserInfo(); renderCalendar(); renderTaskLists(); renderCoin(); updateCharts(); calcCheckIn(); }
+  
   function renderUserInfo() {
     document.getElementById("name1").innerText = syncData.u1.name; document.getElementById("name2").innerText = syncData.u2.name;
     document.getElementById("taskTitle1").innerHTML = syncData.u1.name + " 📋 每日任务"; document.getElementById("taskTitle2").innerHTML = syncData.u2.name + " 📋 每日任务";
     document.getElementById("weekName1").innerText = syncData.u1.name; document.getElementById("weekName2").innerText = syncData.u2.name;
-    document.getElementById("avt1").innerText = syncData.u1.avt; document.getElementById("avt2").innerText = syncData.u2.avt;
-    document.getElementById("sign1").innerHTML = syncData.u1.sign + " 打卡标志"; document.getElementById("sign2").innerHTML = syncData.u2.sign + " 打卡标志";
+    // 渲染头像（支持图片URL）
+    const avt1 = document.getElementById("avt1");
+    const avt2 = document.getElementById("avt2");
+    if (syncData.u1.avt && (syncData.u1.avt.startsWith('http://') || syncData.u1.avt.startsWith('https://'))) {
+      avt1.innerHTML = `<img src="${syncData.u1.avt}" style="width:48px; height:48px; border-radius:50%; object-fit:cover;">`;
+    } else {
+      avt1.innerText = syncData.u1.avt || "🐱";
+    }
+    if (syncData.u2.avt && (syncData.u2.avt.startsWith('http://') || syncData.u2.avt.startsWith('https://'))) {
+      avt2.innerHTML = `<img src="${syncData.u2.avt}" style="width:48px; height:48px; border-radius:50%; object-fit:cover;">`;
+    } else {
+      avt2.innerText = syncData.u2.avt || "🐰";
+    }
+    document.getElementById("sign1").innerHTML = syncData.u1.sign + " 打卡标志";
+    document.getElementById("sign2").innerHTML = syncData.u2.sign + " 打卡标志";
   }
+  
   function renderCoin() { document.getElementById("c1").innerText = syncData.u1.coin; document.getElementById("c2").innerText = syncData.u2.coin; }
   function renderCalendar() {
     const now = new Date(), y = now.getFullYear(), m = now.getMonth();
@@ -216,7 +236,6 @@
           renderAll();
         } else if (msg.type === 'error') {
           showMessage(msg.message);
-          // 房间满，清空存储的房间号，避免自动重试
           localStorage.removeItem("savedRoom");
           currentRoom = "";
           ws.close();
@@ -258,7 +277,19 @@
     return true;
   }
 
-  // 自动恢复上次房间
+  function leaveRoom() {
+    if (ws && ws.readyState === WebSocket.OPEN && currentRoom) {
+      ws.send(JSON.stringify({ type: 'leave', roomId: currentRoom }));
+    }
+    if (ws) ws.close();
+    currentRoom = "";
+    localStorage.removeItem("savedRoom");
+    document.getElementById("roomId").value = "";
+    showMessage("已退出房间");
+    // 可选刷新页面以重置状态
+    location.reload();
+  }
+
   function autoJoin() {
     const savedRoom = localStorage.getItem("savedRoom");
     if (savedRoom) {
@@ -267,17 +298,77 @@
     }
   }
 
-  // UI 弹窗等（与原一致）
+  // 历史记录功能（显示最近3个月打卡情况）
+  function showHistory() {
+    const months = [];
+    const today = new Date();
+    for (let i = 0; i < 3; i++) {
+      let d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+      months.push(d);
+    }
+    let html = `<h4>📅 打卡历史（最近3个月）</h4>`;
+    for (let monthDate of months) {
+      const y = monthDate.getFullYear();
+      const m = monthDate.getMonth();
+      const daysInMonth = new Date(y, m+1, 0).getDate();
+      let u1Count = 0, u2Count = 0;
+      let calHtml = `<div style="margin-top:16px;"><strong>${y}年${m+1}月</strong><div class="history-grid">`;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const s = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const u1Checked = syncData.u1.check[s] ? '✅' : '❌';
+        const u2Checked = syncData.u2.check[s] ? '✅' : '❌';
+        if (syncData.u1.check[s]) u1Count++;
+        if (syncData.u2.check[s]) u2Count++;
+        calHtml += `<div class="history-day">${d}<br>${u1Checked} ${u2Checked}</div>`;
+      }
+      calHtml += `</div><div>${syncData.u1.name} 打卡 ${u1Count}天 &nbsp; ${syncData.u2.name} 打卡 ${u2Count}天</div></div>`;
+      html += calHtml;
+    }
+    document.getElementById("popBody").innerHTML = html + `<button onclick="closeMask()" style="margin-top:16px;">关闭</button>`;
+    document.getElementById("mask").style.display = "flex";
+  }
+
+  // UI 弹窗等
   function applyTheme() { document.body.className = localSetting.theme; if(localSetting.dark) document.body.classList.add("dark"); }
   function saveLocalSetting() { localStorage.setItem("clockLocalSetting", JSON.stringify(localSetting)); }
-  function showIcoPop(type,uid) {
-    const list = type==="avt"?AVT:SIGN, title = type==="avt"?"选择头像":"选择打卡标志";
+  
+  function showIcoPop(type, uid) {
+    const list = type === "avt" ? AVT : SIGN;
+    const title = type === "avt" ? "选择头像（也可自定义图片）" : "选择打卡标志";
     let html = `<h4 style="margin-bottom:12px;">${title}</h4><div class="ico-list">`;
-    list.forEach(ico=>html+=`<div class="ico-item" data-ico="${ico}">${ico}</div>`);
-    html+=`</div><button onclick="closeMask()">关闭</button>`;
-    document.getElementById("popBody").innerHTML=html; document.getElementById("mask").style.display="flex";
-    document.querySelectorAll('.ico-item').forEach(el=>{ el.onclick=()=>{ const ico=el.dataset.ico; const u=uid===1?syncData.u1:syncData.u2; if(type==="avt") u.avt=ico; else u.sign=ico; closeMask(); pushToBackend(); renderAll(); }; });
+    list.forEach(ico => html += `<div class="ico-item" data-ico="${ico}">${ico}</div>`);
+    // 如果是头像，增加自定义图片选项
+    if (type === "avt") {
+      html += `<div class="ico-item" data-ico="custom">📷 自定义图片</div>`;
+    }
+    html += `</div><button onclick="closeMask()">关闭</button>`;
+    document.getElementById("popBody").innerHTML = html;
+    document.getElementById("mask").style.display = "flex";
+    document.querySelectorAll('.ico-item').forEach(el => {
+      el.onclick = () => {
+        const val = el.dataset.ico;
+        const u = uid === 1 ? syncData.u1 : syncData.u2;
+        if (type === "avt") {
+          if (val === "custom") {
+            let url = prompt("请输入图片URL（网络地址）:", "https://example.com/avatar.png");
+            if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
+              u.avt = url;
+            } else {
+              showMessage("无效的URL，请以 http:// 或 https:// 开头");
+            }
+          } else {
+            u.avt = val;
+          }
+        } else {
+          u.sign = val;
+        }
+        closeMask();
+        pushToBackend();
+        renderAll();
+      };
+    });
   }
+  
   function showThemePop() {
     let html = `<h4>🎨 配色主题</h4><div class="ico-list">`;
     THEMES.forEach(t=>html+=`<div class="ico-item" data-theme="${t}">${t?`主题${t.toUpperCase()}`:'默认'}</div>`);
@@ -289,12 +380,11 @@
   function editName(uid) { const u = uid===1?syncData.u1:syncData.u2; const newName = prompt("修改昵称", u.name); if(newName && newName.trim()) u.name = newName.trim(); pushToBackend(); renderAll(); }
   
   function bindEvents() {
-    document.getElementById("joinRoomBtn").onclick = () => {
-      const room = document.getElementById("roomId").value.trim();
-      joinRoom(room);
-    };
+    document.getElementById("joinRoomBtn").onclick = () => { joinRoom(document.getElementById("roomId").value.trim()); };
+    document.getElementById("leaveRoomBtn").onclick = leaveRoom;
     document.getElementById("darkBtn").onclick=()=>{ localSetting.dark=!localSetting.dark; applyTheme(); saveLocalSetting(); };
     document.getElementById("themeBtn").onclick=showThemePop;
+    document.getElementById("historyBtn").onclick=showHistory;
     document.getElementById("avt1").onclick=()=>showIcoPop("avt",1); document.getElementById("avt2").onclick=()=>showIcoPop("avt",2);
     document.getElementById("sign1").onclick=()=>showIcoPop("sign",1); document.getElementById("sign2").onclick=()=>showIcoPop("sign",2);
     document.getElementById("name1").onclick=()=>editName(1); document.getElementById("name2").onclick=()=>editName(2);
