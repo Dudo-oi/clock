@@ -17,8 +17,10 @@
     button:active { transform: scale(0.96); }
     .input-box { padding: 8px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); font-size: 14px; width: 150px; }
     .card { background: var(--card); border-radius: 24px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.04); transition: background 0.2s; }
+    /* 日历卡片取消圆角 */
+    .card-calendar { border-radius: 0; }
     .calendar { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; }
-    .cal-day { aspect-ratio: 1/1; background: var(--primary-light); border-radius: 0; /* 去掉圆角 */ display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; }
+    .cal-day { aspect-ratio: 1/1; background: var(--primary-light); border-radius: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 14px; font-weight: 500; }
     .cal-day.today { border: 2px solid var(--primary); }
     .cal-ico { font-size: 12px; margin-top: 3px; }
     .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -42,13 +44,13 @@
     .toast.show { opacity: 1; }
     .history-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 12px; }
     .history-day { text-align: center; padding: 4px; background: var(--primary-light); border-radius: 8px; font-size: 12px; }
-    /* 便利贴样式 */
-    .excuse-paper { background: #fff9c4; padding: 16px; border-radius: 16px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-top: 16px; }
-    .excuse-person { display: flex; justify-content: space-between; margin-bottom: 16px; font-weight: bold; }
-    .excuse-person span { cursor: pointer; padding: 6px 12px; border-radius: 40px; background: var(--primary-light); }
-    .excuse-person .active { background: var(--primary); color: white; }
-    .excuse-text { width: 100%; padding: 8px; border-radius: 12px; border: 1px solid #ccc; resize: vertical; margin: 8px 0; }
-    .like-btn { font-size: 24px; background: none; border: none; cursor: pointer; color: #f44336; }
+    /* 宽容一下列表样式 */
+    .excuse-list { margin-top: 16px; max-height: 400px; overflow-y: auto; }
+    .excuse-item { background: var(--primary-light); border-radius: 16px; padding: 12px; margin-bottom: 12px; cursor: pointer; }
+    .excuse-item:hover { background: var(--border); }
+    .excuse-date { font-weight: bold; margin-bottom: 6px; }
+    .excuse-status { font-size: 12px; display: flex; justify-content: space-between; }
+    .like-retract { background: none; border: none; font-size: 20px; margin-left: 8px; cursor: pointer; }
   </style>
 </head>
 <body>
@@ -69,7 +71,8 @@
   </div>
 </div>
 
-<div class="card">
+<!-- 日历卡片：取消圆角 -->
+<div class="card card-calendar">
   <div id="monthTit" style="text-align:center; margin-bottom:12px; font-weight:bold;"></div>
   <div class="calendar" id="calendarBox"></div>
 </div>
@@ -116,7 +119,7 @@
   let syncData = { 
     u1: { name: "小茗", avt: "🐱", sign: "⭐", coin: 0, daily: [], weekly: [], check: {} }, 
     u2: { name: "阿悠", avt: "🐰", sign: "🌺", coin: 0, daily: [], weekly: [], check: {} },
-    excuses: {}  // 结构: excuses[日期][uid] = { text, agreedByOther }
+    excuses: {}  // excuses[date][uid] = { text, agreedBy: null(或对方uid) }
   };
   let currentRoom = "";
   let ws = null;
@@ -124,7 +127,6 @@
   let foldWeek = false;
   let chart15, chartWeek;
   let localSetting = JSON.parse(localStorage.getItem("clockLocalSetting")) || { dark: false, theme: "" };
-  // 扩充头像和标志列表
   const AVT = ['🐱','🐰','🐼','🐨','🦊','🐻','🐹','🦄','🌸','🌷','🌹','🍀','🌙','⭐','✨','🎀','🐧','🦋','🐙','🐳'];
   const SIGN = ['⭐','🌺','🌙','🍀','✨','💫','🌷','🎀','💖','🌸','🌈','🌟','🌿','🔥','❤️','💎'];
   const THEMES = ["", "t1", "t2", "t3"];
@@ -138,14 +140,12 @@
 
   function getDayStr(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   
-  // 判断当天是否所有每日任务都完成（全完成才返回 true）
   function isAllDailyDone(uid) {
     const u = uid === 1 ? syncData.u1 : syncData.u2;
     if (!u.daily.length) return false;
     return u.daily.every(task => task.done === true);
   }
   
-  // 计算当天完成比例 (0~1)
   function getDailyRatio(uid) {
     const u = uid === 1 ? syncData.u1 : syncData.u2;
     if (!u.daily.length) return 0;
@@ -153,7 +153,6 @@
     return doneCount / u.daily.length;
   }
   
-  // 更新两人的打卡标志（全完成才显示）
   function calcCheckIn() {
     const today = getDayStr(new Date());
     syncData.u1.check[today] = isAllDailyDone(1);
@@ -239,7 +238,7 @@
     pushToBackend(); renderAll();
   }
   
-  // 图表：折线图，数据为完成比例
+  // 图表：折线图
   function initCharts() {
     if(chart15) chart15.destroy(); if(chartWeek) chartWeek.destroy();
     const ctx15 = document.getElementById("chart15")?.getContext("2d"), ctxWeek = document.getElementById("chartWeek")?.getContext("2d");
@@ -261,9 +260,9 @@
     } catch(e) { console.warn(e); }
   }
   
-  // WebSocket 连接（同前）
+  // WebSocket
   function getWebSocketUrl() { let protocol = window.location.protocol === "https:" ? "wss:" : "ws:"; return `${protocol}//${window.location.host}`; }
-  function connectWebSocket(roomId) { /* 同前，略 */ 
+  function connectWebSocket(roomId) {
     if(ws) ws.close();
     const wsUrl = getWebSocketUrl();
     ws = new WebSocket(wsUrl);
@@ -277,7 +276,7 @@
   function leaveRoom() { if (ws && ws.readyState === WebSocket.OPEN && currentRoom) { ws.send(JSON.stringify({ type: 'leave', roomId: currentRoom })); } if (ws) ws.close(); currentRoom = ""; localStorage.removeItem("savedRoom"); document.getElementById("roomId").value = ""; showMessage("已退出房间"); location.reload(); }
   function autoJoin() { const savedRoom = localStorage.getItem("savedRoom"); if (savedRoom) { document.getElementById("roomId").value = savedRoom; joinRoom(savedRoom); } }
   
-  // 历史记录（无❌，只显示打卡标记）
+  // 历史记录（无❌）
   function showHistory() {
     const months = [];
     const today = new Date();
@@ -303,82 +302,139 @@
     document.getElementById("mask").style.display = "flex";
   }
   
-  // 便利贴（宽容一下）
-  function showExcuseDialog() {
+  // 宽容一下：显示日期列表（竖排），点击某个日期打开详情弹窗
+  function showExcuseList() {
     if (!currentRoom) { showMessage("请先加入房间"); return; }
-    const today = getDayStr(new Date());
-    let selectedUid = 1; // 当前选中的是user1
-    let excuseText = (syncData.excuses?.[today]?.[selectedUid]?.text) || "";
-    
-    const renderDialog = () => {
+    // 收集最近的30天（可调整）
+    let dates = [];
+    let today = new Date();
+    for (let i = 0; i < 30; i++) {
+      let d = new Date();
+      d.setDate(today.getDate() - i);
+      dates.push(getDayStr(d));
+    }
+    dates.reverse(); // 从旧到新
+    let html = `<h4>🙏 宽容一下 · 日期列表</h4><div class="excuse-list">`;
+    for (let date of dates) {
+      const excuse1 = syncData.excuses?.[date]?.[1];
+      const excuse2 = syncData.excuses?.[date]?.[2];
+      const status1 = excuse1?.agreedBy ? (excuse1.agreedBy === 2 ? '👍已同意' : '✏️有借口') : (excuse1?.text ? '📝未同意' : '无');
+      const status2 = excuse2?.agreedBy ? (excuse2.agreedBy === 1 ? '👍已同意' : '✏️有借口') : (excuse2?.text ? '📝未同意' : '无');
+      html += `<div class="excuse-item" data-date="${date}">
+        <div class="excuse-date">📅 ${date}</div>
+        <div class="excuse-status">${syncData.u1.name}: ${status1} &nbsp;|&nbsp; ${syncData.u2.name}: ${status2}</div>
+      </div>`;
+    }
+    html += `</div><button onclick="closeMask()">关闭</button>`;
+    document.getElementById("popBody").innerHTML = html;
+    document.getElementById("mask").style.display = "flex";
+    // 绑定点击事件
+    document.querySelectorAll('.excuse-item').forEach(el => {
+      el.onclick = () => {
+        const date = el.dataset.date;
+        closeMask();
+        showExcuseDetail(date);
+      };
+    });
+  }
+  
+  // 显示某个日期的便利贴，可编辑借口、对方点赞/撤回
+  function showExcuseDetail(date) {
+    let selectedUid = 1; // 当前正在编辑/查看的用户
+    // 渲染弹窗内容
+    function renderDetail() {
+      const excuse = syncData.excuses?.[date]?.[selectedUid] || { text: '', agreedBy: null };
       const u = selectedUid === 1 ? syncData.u1 : syncData.u2;
       const otherUid = selectedUid === 1 ? 2 : 1;
       const other = otherUid === 1 ? syncData.u1 : syncData.u2;
-      const hasAgreed = syncData.excuses?.[today]?.[selectedUid]?.agreedByOther === true;
-      const isAlreadyCompleted = isAllDailyDone(selectedUid);
-      let html = `<h4>🙏 今天没完成？写个借口吧</h4>
-        <div class="excuse-person">
-          <span data-uid="1" class="${selectedUid===1?'active':''}">${syncData.u1.name}</span>
-          <span data-uid="2" class="${selectedUid===2?'active':''}">${syncData.u2.name}</span>
+      const isAgreed = excuse.agreedBy === otherUid;
+      const allDone = isAllDailyDone(selectedUid);
+      let html = `<h4>🙏 宽容一下 · ${date}</h4>
+        <div class="excuse-person" style="display:flex; justify-content:space-between; margin-bottom:16px;">
+          <span data-uid="1" style="cursor:pointer; padding:6px 12px; border-radius:40px; background:${selectedUid===1?'var(--primary)': 'var(--primary-light)'}">${syncData.u1.name}</span>
+          <span data-uid="2" style="cursor:pointer; padding:6px 12px; border-radius:40px; background:${selectedUid===2?'var(--primary)': 'var(--primary-light)'}">${syncData.u2.name}</span>
         </div>
-        <textarea id="excuseInput" class="excuse-text" rows="3" placeholder="写下今天的借口...">${escapeHtml(excuseText)}</textarea>
-        <div style="display:flex; justify-content: flex-end;">
+        <textarea id="excuseText" class="excuse-text" rows="3" placeholder="写下当天的借口...">${escapeHtml(excuse.text)}</textarea>
+        <div style="display:flex; justify-content: flex-end; margin-top:8px;">
           <button id="saveExcuseBtn">💾 保存借口</button>
-          ${!hasAgreed && !isAlreadyCompleted && selectedUid !== getMyUid() ? `<button id="agreeBtn" style="background:#4caf50; margin-left:8px;">👍 同意（补打卡）</button>` : ''}
-          ${hasAgreed ? `<span style="color:green;">✅ 对方已同意，今日任务已完成</span>` : ''}
-          ${isAlreadyCompleted ? `<span style="color:blue;">📌 今日任务已全部完成，无需宽容</span>` : ''}
+          ${!allDone && !isAgreed && selectedUid !== getMyUid() ? `<button id="agreeBtn" style="background:#4caf50; margin-left:8px;">👍 同意补打卡</button>` : ''}
+          ${isAgreed ? `<button id="retractBtn" style="background:#f44336; margin-left:8px;">↩️ 撤回同意</button>` : ''}
+          ${allDone ? `<span style="color:green; margin-left:8px;">✅ 当日任务已完成</span>` : ''}
         </div>
       `;
       document.getElementById("popBody").innerHTML = html;
       document.getElementById("mask").style.display = "flex";
-      // 绑定事件
-      document.querySelectorAll('.excuse-person span').forEach(el => {
-        el.onclick = () => { selectedUid = parseInt(el.dataset.uid); excuseText = (syncData.excuses?.[today]?.[selectedUid]?.text) || ""; renderDialog(); };
+      // 切换用户
+      document.querySelectorAll('[data-uid]').forEach(el => {
+        el.onclick = () => { selectedUid = parseInt(el.dataset.uid); renderDetail(); };
       });
+      // 保存借口
       document.getElementById("saveExcuseBtn").onclick = () => {
-        const newText = document.getElementById("excuseInput").value.trim();
+        const newText = document.getElementById("excuseText").value.trim();
         if (!syncData.excuses) syncData.excuses = {};
-        if (!syncData.excuses[today]) syncData.excuses[today] = {};
-        syncData.excuses[today][selectedUid] = { text: newText, agreedByOther: syncData.excuses[today][selectedUid]?.agreedByOther || false };
+        if (!syncData.excuses[date]) syncData.excuses[date] = {};
+        if (!syncData.excuses[date][selectedUid]) syncData.excuses[date][selectedUid] = {};
+        syncData.excuses[date][selectedUid].text = newText;
+        // 如果之前有同意状态，保留同意状态（不覆盖）
         pushToBackend();
         showMessage("借口已保存");
-        closeMask();
+        renderDetail();
       };
+      // 同意补打卡
       const agreeBtn = document.getElementById("agreeBtn");
       if (agreeBtn) {
         agreeBtn.onclick = () => {
-          // 对方同意，补打卡：将该用户当天的每日任务全部设为完成，增加金币（每天任务每个+1金币），标记打卡
+          // 将 selectedUid 当天的所有每日任务设为完成，增加金币
           const u = selectedUid === 1 ? syncData.u1 : syncData.u2;
-          // 把所有每日任务设为true
-          u.daily.forEach(task => { if (!task.done) { task.done = true; u.coin += 1; } });
-          // 同时，由于每日任务全完成，calcCheckIn会自动标记check为true
+          const addedCoins = u.daily.filter(t => !t.done).length; // 每个未完成任务加1金币
+          u.daily.forEach(task => { if (!task.done) { task.done = true; } });
+          u.coin += addedCoins;
           calcCheckIn();
-          // 记录同意标记
+          // 记录同意者
           if (!syncData.excuses) syncData.excuses = {};
-          if (!syncData.excuses[today]) syncData.excuses[today] = {};
-          syncData.excuses[today][selectedUid] = { text: excuseText, agreedByOther: true };
+          if (!syncData.excuses[date]) syncData.excuses[date] = {};
+          if (!syncData.excuses[date][selectedUid]) syncData.excuses[date][selectedUid] = {};
+          syncData.excuses[date][selectedUid].agreedBy = otherUid;
           pushToBackend();
           renderAll();
-          showMessage(`已为${u.name}补打卡，今日任务全部完成`);
-          closeMask();
+          showMessage(`已为${u.name}补打卡，任务全部完成`);
+          renderDetail(); // 刷新弹窗
         };
       }
-    };
-    renderDialog();
+      // 撤回同意
+      const retractBtn = document.getElementById("retractBtn");
+      if (retractBtn) {
+        retractBtn.onclick = () => {
+          // 撤回：将该用户当天的所有每日任务设为未完成，减去之前增加的金币
+          const u = selectedUid === 1 ? syncData.u1 : syncData.u2;
+          const currentDone = u.daily.filter(t => t.done).length;
+          u.daily.forEach(task => { if (task.done) { task.done = false; } });
+          u.coin -= currentDone; // 每个已完成任务之前加了1金币，现在扣回
+          calcCheckIn();
+          // 清除同意标记
+          if (syncData.excuses?.[date]?.[selectedUid]) {
+            delete syncData.excuses[date][selectedUid].agreedBy;
+          }
+          pushToBackend();
+          renderAll();
+          showMessage(`已撤回对${u.name}的补打卡`);
+          renderDetail();
+        };
+      }
+    }
+    renderDetail();
   }
   
+  // 辅助获取当前用户（简单返回1或2？因为房间只有两人，我们可以在同意时判断点击者是另一个人，但为了简单，让界面上两个人都能同意/撤回，但只有对方操作才有意义。不做严格限制，由用户自觉）
   function getMyUid() {
-    // 简单判断当前用户是1还是2？由于没有登录概念，这里允许任意用户点击同意，但合理场景下应该是对方同意。
-    // 为简化，同意按钮只在当前选中的用户不是“自己”时显示？我们需要识别设备对应的用户？比较复杂，这里不做严格限制，任何其他用户都可以同意。
-    // 采用策略：在同意时，检查当前用户是否与填写者不同（通过localStorage暂存一个随机身份，或者简单不做限制，因为两人房间，另一个自然就是对方）
-    // 但为了体验，我们让前端在同意时要求输入对方昵称？不，直接允许即可，因为房间内只有两人。
-    return null; // 暂不实现识别，点击同意由另一方操作即可。
+    // 这里我们不实现自动识别，但可以让按钮显示条件仅为“不是当前选中的用户”即可，实际应用中另一方会操作。
+    return null;
   }
   
   // UI 弹窗等
   function applyTheme() { document.body.className = localSetting.theme; if(localSetting.dark) document.body.classList.add("dark"); }
   function saveLocalSetting() { localStorage.setItem("clockLocalSetting", JSON.stringify(localSetting)); }
-  function showIcoPop(type, uid) { /* 同前，略 */ 
+  function showIcoPop(type, uid) {
     const list = type === "avt" ? AVT : SIGN;
     const title = type === "avt" ? "选择头像（也可自定义图片）" : "选择打卡标志";
     let html = `<h4 style="margin-bottom:12px;">${title}</h4><div class="ico-list">`;
@@ -418,7 +474,7 @@
     document.getElementById("darkBtn").onclick=()=>{ localSetting.dark=!localSetting.dark; applyTheme(); saveLocalSetting(); };
     document.getElementById("themeBtn").onclick=showThemePop;
     document.getElementById("historyBtn").onclick=showHistory;
-    document.getElementById("excuseBtn").onclick=showExcuseDialog;
+    document.getElementById("excuseBtn").onclick=showExcuseList;
     document.getElementById("avt1").onclick=()=>showIcoPop("avt",1); document.getElementById("avt2").onclick=()=>showIcoPop("avt",2);
     document.getElementById("sign1").onclick=()=>showIcoPop("sign",1); document.getElementById("sign2").onclick=()=>showIcoPop("sign",2);
     document.getElementById("name1").onclick=()=>editName(1); document.getElementById("name2").onclick=()=>editName(2);
