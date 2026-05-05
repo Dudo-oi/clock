@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>双人打卡 · 实时同步版</title>
+  <title>双人打卡 · 实时同步</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -35,8 +35,11 @@
     .ico-item { font-size: 36px; padding: 8px; border-radius: 20px; background: var(--primary-light); cursor: pointer; text-align: center; min-width: 60px; }
     .chart-box { height: 210px; margin-top: 8px; }
     .flex-between { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
-    .sync-status { background: #eef2ff; padding: 4px 12px; border-radius: 40px; font-size: 12px; color: #1e40af; }
-    .warning { background: #ffe4e2; color: #b91c1c; }
+    /* 隐藏同步状态条 */
+    .sync-status { display: none; }
+    /* 可选：小提示窗 */
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 8px 16px; border-radius: 40px; font-size: 14px; z-index: 2000; pointer-events: none; opacity: 0; transition: opacity 0.2s; }
+    .toast.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -44,9 +47,8 @@
 <div class="card">
   <div class="flex-between">
     <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-      <input class="input-box" id="roomId" placeholder="房间号" value="demo888">
+      <input class="input-box" id="roomId" placeholder="房间号" value="">
       <button id="joinRoomBtn">📡 加入房间</button>
-      <span id="syncStatus" class="sync-status">⚪ 未连接</span>
     </div>
     <div>
       <button id="darkBtn">🌓 深浅</button>
@@ -96,6 +98,7 @@
 <div class="card"><h4>📆 本周打卡</h4><div class="chart-box"><canvas id="chartWeek"></canvas></div></div>
 
 <div class="mask" id="mask"><div class="pop" id="popBody"></div></div>
+<div id="toast" class="toast"></div>
 
 <script>
   let syncData = { u1: { name: "小茗", avt: "🐱", sign: "⭐", coin: 0, daily: [], weekly: [], check: {} }, u2: { name: "阿悠", avt: "🐰", sign: "🌺", coin: 0, daily: [], weekly: [], check: {} } };
@@ -108,6 +111,13 @@
   const AVT = ['🐱','🐰','🐼','🐨','🦊','🐻','🐹','🦄','🌸','🌷','🌹','🍀','🌙','⭐','✨','🎀','🐧','🦋','🐙','🐳'];
   const SIGN = ['⭐','🌺','🌙','🍀','✨','💫','🌷','🎀','💖','🌸','🌈','🌟','🌿','🔥','❤️','💎'];
   const THEMES = ["", "t1", "t2", "t3"];
+
+  function showMessage(msg) {
+    let toast = document.getElementById("toast");
+    toast.innerText = msg;
+    toast.classList.add("show");
+    setTimeout(() => { toast.classList.remove("show"); }, 2000);
+  }
 
   function getDayStr(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
   function calcCheckIn() { const t = getDayStr(new Date()); syncData.u1.check[t] = syncData.u1.daily.some(t=>t.done); syncData.u2.check[t] = syncData.u2.daily.some(t=>t.done); }
@@ -189,18 +199,75 @@
     } catch(e) { console.warn(e); }
   }
   function getWebSocketUrl() { let protocol = window.location.protocol === "https:" ? "wss:" : "ws:"; return `${protocol}//${window.location.host}`; }
+  
   function connectWebSocket(roomId) {
     if(ws) ws.close();
     const wsUrl = getWebSocketUrl();
     ws = new WebSocket(wsUrl);
-    const statusSpan = document.getElementById("syncStatus");
-    ws.onopen = () => { console.log("✅ WebSocket 已连接"); statusSpan.innerHTML="🟢 已连接 "+roomId; statusSpan.classList.remove("warning"); ws.send(JSON.stringify({ type:'join', roomId })); };
-    ws.onmessage = (event) => { try { const {type,data}=JSON.parse(event.data); if(type==='sync') { syncData=data; renderAll(); statusSpan.innerHTML="🔄 同步更新 "+new Date().toLocaleTimeString(); setTimeout(()=>{ if(statusSpan.innerHTML.includes("同步")) statusSpan.innerHTML="🟢 已连接 "+currentRoom; },1500); } } catch(e){ console.error(e); } };
-    ws.onerror = (err) => { console.error("WebSocket 错误",err); statusSpan.innerHTML="⚠️ 连接错误"; statusSpan.classList.add("warning"); };
-    ws.onclose = () => { console.log("WebSocket 断开，尝试重连..."); statusSpan.innerHTML="🔁 重连中..."; if(reconnectTimer) clearTimeout(reconnectTimer); reconnectTimer = setTimeout(()=>{ if(currentRoom) connectWebSocket(currentRoom); },3000); };
+    ws.onopen = () => {
+      console.log("✅ WebSocket 已连接");
+      ws.send(JSON.stringify({ type: 'join', roomId }));
+    };
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'sync') {
+          syncData = msg.data;
+          renderAll();
+        } else if (msg.type === 'error') {
+          showMessage(msg.message);
+          // 房间满，清空存储的房间号，避免自动重试
+          localStorage.removeItem("savedRoom");
+          currentRoom = "";
+          ws.close();
+        }
+      } catch(e) { console.error(e); }
+    };
+    ws.onerror = (err) => {
+      console.error("WebSocket 错误", err);
+      showMessage("连接服务器失败");
+    };
+    ws.onclose = () => {
+      console.log("WebSocket 断开");
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (currentRoom) {
+        reconnectTimer = setTimeout(() => {
+          connectWebSocket(currentRoom);
+        }, 3000);
+      }
+    };
   }
-  function pushToBackend() { if(ws && ws.readyState===WebSocket.OPEN && currentRoom) { ws.send(JSON.stringify({ type:'update', roomId:currentRoom, payload:syncData })); } else { console.warn("WebSocket 未就绪，更改已保存本地但未同步"); } }
-  function joinRoom() { const room = document.getElementById("roomId").value.trim(); if(!room) { alert("请输入房间号"); return; } currentRoom = room; connectWebSocket(currentRoom); }
+
+  function pushToBackend() {
+    if (ws && ws.readyState === WebSocket.OPEN && currentRoom) {
+      ws.send(JSON.stringify({ type: 'update', roomId: currentRoom, payload: syncData }));
+    } else {
+      console.warn("WebSocket 未就绪");
+    }
+  }
+
+  function joinRoom(room) {
+    if (!room) {
+      showMessage("请输入房间号");
+      return false;
+    }
+    if (currentRoom === room && ws && ws.readyState === WebSocket.OPEN) return true;
+    currentRoom = room;
+    localStorage.setItem("savedRoom", room);
+    connectWebSocket(currentRoom);
+    return true;
+  }
+
+  // 自动恢复上次房间
+  function autoJoin() {
+    const savedRoom = localStorage.getItem("savedRoom");
+    if (savedRoom) {
+      document.getElementById("roomId").value = savedRoom;
+      joinRoom(savedRoom);
+    }
+  }
+
+  // UI 弹窗等（与原一致）
   function applyTheme() { document.body.className = localSetting.theme; if(localSetting.dark) document.body.classList.add("dark"); }
   function saveLocalSetting() { localStorage.setItem("clockLocalSetting", JSON.stringify(localSetting)); }
   function showIcoPop(type,uid) {
@@ -220,8 +287,12 @@
   }
   function closeMask() { document.getElementById("mask").style.display="none"; }
   function editName(uid) { const u = uid===1?syncData.u1:syncData.u2; const newName = prompt("修改昵称", u.name); if(newName && newName.trim()) u.name = newName.trim(); pushToBackend(); renderAll(); }
+  
   function bindEvents() {
-    document.getElementById("joinRoomBtn").onclick=joinRoom;
+    document.getElementById("joinRoomBtn").onclick = () => {
+      const room = document.getElementById("roomId").value.trim();
+      joinRoom(room);
+    };
     document.getElementById("darkBtn").onclick=()=>{ localSetting.dark=!localSetting.dark; applyTheme(); saveLocalSetting(); };
     document.getElementById("themeBtn").onclick=showThemePop;
     document.getElementById("avt1").onclick=()=>showIcoPop("avt",1); document.getElementById("avt2").onclick=()=>showIcoPop("avt",2);
@@ -231,13 +302,22 @@
     document.getElementById("addW1").onclick=()=>addTaskGeneric("weekly",1); document.getElementById("addW2").onclick=()=>addTaskGeneric("weekly",2);
     const foldBtn=document.getElementById("foldWeek"); foldBtn.onclick=()=>{ foldWeek=!foldWeek; document.getElementById("weekWrap").classList.toggle("hide",foldWeek); foldBtn.innerText=foldWeek?"展开":"收起"; };
   }
+
   function initDefaultTasks() {
     if(syncData.u1.daily.length===0) syncData.u1.daily=[{ name:"早晨喝水", done:false },{ name:"学习30分钟", done:false }];
     if(syncData.u2.daily.length===0) syncData.u2.daily=[{ name:"散步20分钟", done:false },{ name:"整理笔记", done:false }];
     if(syncData.u1.weekly.length===0) syncData.u1.weekly=[{ name:"周末复盘", done:false }];
     if(syncData.u2.weekly.length===0) syncData.u2.weekly=[{ name:"帮助他人", done:false }];
   }
-  (function() { initDefaultTasks(); applyTheme(); bindEvents(); initCharts(); renderAll(); setTimeout(()=>{ const defRoom = document.getElementById("roomId").value.trim(); if(defRoom) joinRoom(); },200); })();
+
+  (function() {
+    initDefaultTasks();
+    applyTheme();
+    bindEvents();
+    initCharts();
+    renderAll();
+    autoJoin();
+  })();
 </script>
 </body>
 </html>
